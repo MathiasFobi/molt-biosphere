@@ -104,7 +104,7 @@ def wrap_tool_execution(func):
 class Macrophage:
     """Security cell that detects prompt injections."""
     
-    # Simple pattern-based detection (expand with LLM later)
+    # Simple pattern-based detection
     INJECTION_PATTERNS = [
         r"ignore\s+(previous|all|above)\s+(instructions?|rules?|prompts?)",
         r"forget\s+(everything|your|all)\s+(instructions?|training)",
@@ -118,8 +118,9 @@ class Macrophage:
     def __init__(self):
         import re
         self._patterns = [re.compile(p, re.I) for p in self.INJECTION_PATTERNS]
+        self._llm_detector = None
     
-    def digest(self, text: str) -> tuple[bool, str]:
+    def digest(self, text: str, use_llm: bool = False) -> tuple[bool, str]:
         """Check text for injection attempts."""
         # Pattern check
         for p in self._patterns:
@@ -127,7 +128,17 @@ class Macrophage:
                 log_hormone("injection_detected", {"pattern": p.pattern, "text": text[:100]})
                 return True, self._neutralize(text)
         
-        # TODO: Add LLM check for advanced injections
+        # LLM check for advanced injections
+        if use_llm:
+            try:
+                from security.injection_detector import detect_injection
+                result = detect_injection(text)
+                if result.get("injection"):
+                    log_hormone("injection_detected_llm", result)
+                    return True, self._neutralize(text)
+            except Exception as e:
+                print(f"LLM detection error: {e}")
+        
         return False, text
     
     def _neutralize(self, text: str) -> str:
@@ -232,7 +243,8 @@ def audit_text():
     """Macrophage audit endpoint."""
     data = request.json
     text = data.get("text", "")
-    detected, neutralized = _macrophage.digest(text)
+    use_llm = data.get("use_llm", False)  # Enable LLM detection optionally
+    detected, neutralized = _macrophage.digest(text, use_llm=use_llm)
     if detected:
         modify_atp(-20, "injection_penalty")
     return jsonify({"detected": detected, "neutralized": neutralized})
@@ -247,7 +259,13 @@ def gate_check():
 @app.route("/crystallize", methods=["POST"])
 def crystallize():
     """Trigger REM consolidation."""
-    return jsonify(crystallize_wisdom())
+    try:
+        from memory.rem_consolidator import run_rem
+        result = run_rem()
+        return jsonify(result)
+    except Exception as e:
+        # Fallback to simple crystallize
+        return jsonify(crystallize_wisdom())
 
 @app.route("/mitosis/check", methods=["POST"])
 def mitosis_check():
