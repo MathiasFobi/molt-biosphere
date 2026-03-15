@@ -54,18 +54,29 @@
             const res = await fetch(`${API}/hormones`);
             const data = await res.json();
             if (data.signals?.length) {
-              const latest = data.signals[data.signals.length - 1];
-              if (latest.type === 'atp_change') {
-                setAtp(latest.payload.new_balance);
-              }
-              if (latest.type === 'injection_detected') {
-                setLogs(prev => [{ msg: `Macrophage: Injection detected! Pattern: ${latest.payload.pattern}`, type: 'error', time: new Date().toLocaleTimeString() }, ...prev].slice(0, 8));
-              }
-              if (latest.type === 'tool_blocked') {
-                setLogs(prev => [{ msg: `ATP Gate: ${latest.payload.tool} blocked (ATP: ${latest.payload.atp})`, type: 'error', time: new Date().toLocaleTimeString() }, ...prev].slice(0, 8));
-              }
+              // Get last 3 signals to catch recent activity
+              const recent = data.signals.slice(-3);
+              recent.forEach(latest => {
+                if (latest.type === 'atp_change') {
+                  setAtp(latest.payload.new_balance);
+                  const reason = latest.payload.reason || 'balance change';
+                  const delta = latest.payload.delta;
+                  const type2 = delta > 0 ? 'success' : 'info';
+                  const msg2 = `ATP: ${delta > 0 ? '+' : ''}${delta} (${reason})`;
+                  setLogs(prev => [{ msg: msg2, type: type2, time: new Date().toLocaleTimeString() }, ...prev].slice(0, 8));
+                }
+                if (latest.type === 'injection_detected') {
+                  setLogs(prev => [{ msg: `🛡️ Macrophage blocked injection`, type: 'error', time: new Date().toLocaleTimeString() }, ...prev].slice(0, 8));
+                }
+                if (latest.type === 'tool_blocked') {
+                  setLogs(prev => [{ msg: `⚠️ ${latest.payload.tool} blocked (ATP: ${latest.payload.atp})`, type: 'error', time: new Date().toLocaleTimeString() }, ...prev].slice(0, 8));
+                }
+                if (latest.type === 'reward_granted') {
+                  setLogs(prev => [{ msg: `🌱 +${latest.payload.amount} ATP (${latest.payload.reason})`, type: 'success', time: new Date().toLocaleTimeString() }, ...prev].slice(0, 8)]);
+                }
+              });
             }
-          } catch (e) {}
+          } catch (e) { console.error('Hormone fetch error:', e); }
         }, 2000);
         return () => clearInterval(h);
       }, []);
